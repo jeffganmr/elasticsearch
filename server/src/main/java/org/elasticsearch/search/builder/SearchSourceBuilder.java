@@ -1130,6 +1130,7 @@ public final class SearchSourceBuilder implements Writeable, ToXContentObject, R
         rewrittenBuilder.collapse = collapse;
         rewrittenBuilder.pointInTimeBuilder = pointInTimeBuilder;
         rewrittenBuilder.runtimeMappings = runtimeMappings;
+        rewrittenBuilder.distributedTraceId = distributedTraceId;
         return rewrittenBuilder;
     }
 

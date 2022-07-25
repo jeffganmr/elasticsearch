@@ -124,7 +124,7 @@ public class QueryPhase {
             Thread.currentThread().setName(currThreadName + "_traceid:" + searchContext.getDistributedTraceId());
         }
         try {
-            Thread.sleep(10000);
+            Thread.sleep(1000);
         } catch (Exception e) {
 
         }

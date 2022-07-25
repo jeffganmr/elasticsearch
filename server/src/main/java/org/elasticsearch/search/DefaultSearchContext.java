@@ -238,10 +238,16 @@ final class DefaultSearchContext extends SearchContext {
         }
         this.query = buildFilteredQuery(query);
         if (rewrite) {
+            final String currThreadName = Thread.currentThread().getName();
+            if (this.getDistributedTraceId() != null) {
+                Thread.currentThread().setName(currThreadName + "_traceid:" + this.getDistributedTraceId());
+            }
             try {
                 this.query = searcher.rewrite(query);
             } catch (IOException e) {
                 throw new QueryPhaseExecutionException(shardTarget, "Failed to rewrite main query", e);
+            } finally {
+                Thread.currentThread().setName(currThreadName);
             }
         }
     }

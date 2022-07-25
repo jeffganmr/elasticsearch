@@ -95,7 +95,14 @@ final class FetchSearchPhase extends SearchPhase {
         final int numShards = context.getNumShards();
         final boolean isScrollSearch = context.getRequest().scroll() != null;
         final List<SearchPhaseResult> phaseResults = queryResults.asList();
+        // context.getRequest().source().getDistributedTraceId()
+        String distributedTraceId = context.getRequest().source().getDistributedTraceId();
+        final String currThreadName = Thread.currentThread().getName();
+        if (distributedTraceId != null) {
+            Thread.currentThread().setName(currThreadName + "_traceid:" + distributedTraceId);
+        }
         final SearchPhaseController.ReducedQueryPhase reducedQueryPhase = resultConsumer.reduce();
+        Thread.currentThread().setName(currThreadName);
         final boolean queryAndFetchOptimization = queryResults.length() == 1;
         final Runnable finishPhase = ()
             -> moveToNextPhase(searchPhaseController, queryResults, reducedQueryPhase, queryAndFetchOptimization ?
