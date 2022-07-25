@@ -107,6 +107,9 @@ public final class SearchSourceBuilder implements Writeable, ToXContentObject, R
     public static final ParseField POINT_IN_TIME = new ParseField("pit");
     public static final ParseField RUNTIME_MAPPINGS_FIELD = new ParseField("runtime_mappings");
 
+    public static final ParseField DISTRIBUTED_TRACE_ID = new ParseField("distributed_trace_id");
+
+
     public static SearchSourceBuilder fromXContent(XContentParser parser) throws IOException {
         return fromXContent(parser, true);
     }
@@ -188,6 +191,17 @@ public final class SearchSourceBuilder implements Writeable, ToXContentObject, R
 
     private Map<String, Object> runtimeMappings = emptyMap();
 
+    private String distributedTraceId;
+
+    public String getDistributedTraceId() {
+        return distributedTraceId;
+    }
+
+    public void setDistributedTraceId(String distributedTraceId) {
+        this.distributedTraceId = distributedTraceId;
+    }
+
+
     /**
      * Constructs a new search source builder.
      */
@@ -256,6 +270,7 @@ public final class SearchSourceBuilder implements Writeable, ToXContentObject, R
         searchAfterBuilder = in.readOptionalWriteable(SearchAfterBuilder::new);
         sliceBuilder = in.readOptionalWriteable(SliceBuilder::new);
         collapse = in.readOptionalWriteable(CollapseBuilder::new);
+        distributedTraceId = in.readOptionalString();
         if (in.getVersion().onOrAfter(Version.V_7_0_0)) {
             trackTotalHitsUpTo = in.readOptionalInt();
         } else {
@@ -333,6 +348,7 @@ public final class SearchSourceBuilder implements Writeable, ToXContentObject, R
         out.writeOptionalWriteable(searchAfterBuilder);
         out.writeOptionalWriteable(sliceBuilder);
         out.writeOptionalWriteable(collapse);
+        out.writeOptionalString(distributedTraceId);
         if (out.getVersion().onOrAfter(Version.V_7_0_0)) {
             out.writeOptionalInt(trackTotalHitsUpTo);
         } else {
@@ -1114,6 +1130,7 @@ public final class SearchSourceBuilder implements Writeable, ToXContentObject, R
         rewrittenBuilder.collapse = collapse;
         rewrittenBuilder.pointInTimeBuilder = pointInTimeBuilder;
         rewrittenBuilder.runtimeMappings = runtimeMappings;
+        rewrittenBuilder.distributedTraceId = distributedTraceId;
         return rewrittenBuilder;
     }
 
@@ -1158,6 +1175,8 @@ public final class SearchSourceBuilder implements Writeable, ToXContentObject, R
                     explain = parser.booleanValue();
                 } else if (TRACK_SCORES_FIELD.match(currentFieldName, parser.getDeprecationHandler())) {
                     trackScores = parser.booleanValue();
+                } else if (DISTRIBUTED_TRACE_ID.match(currentFieldName, parser.getDeprecationHandler())) {
+                    distributedTraceId = parser.text();
                 } else if (TRACK_TOTAL_HITS_FIELD.match(currentFieldName, parser.getDeprecationHandler())) {
                     if (token == XContentParser.Token.VALUE_BOOLEAN ||
                         (token == XContentParser.Token.VALUE_STRING && Booleans.isBoolean(parser.text()))) {
@@ -1384,6 +1403,10 @@ public final class SearchSourceBuilder implements Writeable, ToXContentObject, R
 
         if (trackScores) {
             builder.field(TRACK_SCORES_FIELD.getPreferredName(), true);
+        }
+
+        if (distributedTraceId != null) {
+            builder.field(DISTRIBUTED_TRACE_ID.getPreferredName(), distributedTraceId);
         }
 
         if (trackTotalHitsUpTo != null) {
@@ -1702,6 +1725,7 @@ public final class SearchSourceBuilder implements Writeable, ToXContentObject, R
                 && Objects.equals(profile, other.profile)
                 && Objects.equals(extBuilders, other.extBuilders)
                 && Objects.equals(collapse, other.collapse)
+                && Objects.equals(distributedTraceId, other.distributedTraceId)
                 && Objects.equals(trackTotalHitsUpTo, other.trackTotalHitsUpTo)
                 && Objects.equals(pointInTimeBuilder, other.pointInTimeBuilder)
                 && Objects.equals(runtimeMappings, other.runtimeMappings);

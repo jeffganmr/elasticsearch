@@ -111,6 +111,8 @@ public class RestTasksAction extends AbstractCatAction {
         table.addCell("version", "default:false;alias:v;desc:es version");
         table.addCell("x_opaque_id", "default:false;alias:x;desc:X-Opaque-ID header");
 
+        table.addCell("distributed_trace_id", "default:true;desc:distributed trace id for search requests");
+
         // Task detailed info
         if (detailed) {
             table.addCell("description", "default:true;alias:desc;desc:task action");
@@ -147,6 +149,10 @@ public class RestTasksAction extends AbstractCatAction {
         table.addCell(node == null ? "-" : node.getName());
         table.addCell(node == null ? "-" : node.getVersion().toString());
         table.addCell(taskInfo.getHeaders().getOrDefault(Task.X_OPAQUE_ID, "-"));
+
+
+        String distributedTraceId = taskInfo.getDistributedTraceId();
+        table.addCell((node == null ||distributedTraceId == null) ? "-" : distributedTraceId);
 
         if (detailed) {
             table.addCell(taskInfo.getDescription());

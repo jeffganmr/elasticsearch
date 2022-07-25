@@ -119,34 +119,47 @@ public class QueryPhase {
     }
 
     public void execute(SearchContext searchContext) throws QueryPhaseExecutionException {
-        if (searchContext.hasOnlySuggest()) {
+        final String currThreadName = Thread.currentThread().getName();
+        if (searchContext.getDistributedTraceId() != null) {
+            Thread.currentThread().setName(currThreadName + "_traceid:" + searchContext.getDistributedTraceId());
+        }
+        try {
+            Thread.sleep(1000);
+        } catch (Exception e) {
+
+        }
+        try {
+            if (searchContext.hasOnlySuggest()) {
+                suggestPhase.execute(searchContext);
+                searchContext.queryResult().topDocs(new TopDocsAndMaxScore(
+                        new TopDocs(new TotalHits(0, TotalHits.Relation.EQUAL_TO), Lucene.EMPTY_SCORE_DOCS), Float.NaN),
+                    new DocValueFormat[0]);
+                return;
+            }
+
+            if (LOGGER.isTraceEnabled()) {
+                LOGGER.trace("{}", new SearchContextSourcePrinter(searchContext));
+            }
+
+            // Pre-process aggregations as late as possible. In the case of a DFS_Q_T_F
+            // request, preProcess is called on the DFS phase phase, this is why we pre-process them
+            // here to make sure it happens during the QUERY phase
+            aggregationPhase.preProcess(searchContext);
+            boolean rescore = executeInternal(searchContext);
+
+            if (rescore) { // only if we do a regular search
+                rescorePhase.execute(searchContext);
+            }
             suggestPhase.execute(searchContext);
-            searchContext.queryResult().topDocs(new TopDocsAndMaxScore(
-                    new TopDocs(new TotalHits(0, TotalHits.Relation.EQUAL_TO), Lucene.EMPTY_SCORE_DOCS), Float.NaN),
-                new DocValueFormat[0]);
-            return;
-        }
+            aggregationPhase.execute(searchContext);
 
-        if (LOGGER.isTraceEnabled()) {
-            LOGGER.trace("{}", new SearchContextSourcePrinter(searchContext));
-        }
-
-        // Pre-process aggregations as late as possible. In the case of a DFS_Q_T_F
-        // request, preProcess is called on the DFS phase phase, this is why we pre-process them
-        // here to make sure it happens during the QUERY phase
-        aggregationPhase.preProcess(searchContext);
-        boolean rescore = executeInternal(searchContext);
-
-        if (rescore) { // only if we do a regular search
-            rescorePhase.execute(searchContext);
-        }
-        suggestPhase.execute(searchContext);
-        aggregationPhase.execute(searchContext);
-
-        if (searchContext.getProfilers() != null) {
-            ProfileShardResult shardResults = SearchProfileShardResults
-                .buildShardResults(searchContext.getProfilers());
-            searchContext.queryResult().profileResults(shardResults);
+            if (searchContext.getProfilers() != null) {
+                ProfileShardResult shardResults = SearchProfileShardResults
+                    .buildShardResults(searchContext.getProfilers());
+                searchContext.queryResult().profileResults(shardResults);
+            }
+        } finally {
+            Thread.currentThread().setName(currThreadName);
         }
     }
 

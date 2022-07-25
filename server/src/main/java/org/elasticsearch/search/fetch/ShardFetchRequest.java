@@ -103,7 +103,7 @@ public class ShardFetchRequest extends TransportRequest {
 
     @Override
     public Task createTask(long id, String type, String action, TaskId parentTaskId, Map<String, String> headers) {
-        return new SearchShardTask(id, type, action, getDescription(), parentTaskId, headers);
+        return new SearchShardTask(id, type, action, getDescription(), parentTaskId, contextId.getDistributedTraceId(), headers);
     }
 
     @Override

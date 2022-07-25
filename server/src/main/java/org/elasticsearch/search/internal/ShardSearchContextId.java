@@ -20,9 +20,17 @@ public final class ShardSearchContextId implements Writeable {
     private final String sessionId;
     private final long id;
 
+    private String distributedTraceId;
+
     public ShardSearchContextId(String sessionId, long id) {
         this.sessionId = Objects.requireNonNull(sessionId);
         this.id = id;
+    }
+
+    public ShardSearchContextId(String sessionId, long id, String distributedTraceId) {
+        this.sessionId = Objects.requireNonNull(sessionId);
+        this.id = id;
+        this.distributedTraceId = distributedTraceId;
     }
 
     public ShardSearchContextId(StreamInput in) throws IOException {
@@ -32,6 +40,7 @@ public final class ShardSearchContextId implements Writeable {
         } else {
             this.sessionId = "";
         }
+        this.distributedTraceId = in.readOptionalString();
     }
 
     @Override
@@ -40,6 +49,7 @@ public final class ShardSearchContextId implements Writeable {
         if (out.getVersion().onOrAfter(Version.V_7_7_0)) {
             out.writeString(sessionId);
         }
+        out.writeOptionalString(distributedTraceId);
     }
 
     public String getSessionId() {
@@ -66,5 +76,24 @@ public final class ShardSearchContextId implements Writeable {
     @Override
     public String toString() {
         return "[" + sessionId + "][" + id + "]";
+    }
+
+
+    public String getDistributedTraceId() {
+        return distributedTraceId;
+    }
+
+    public void setDistributedTraceId(String distributedTraceId) {
+        this.distributedTraceId = distributedTraceId;
+    }
+
+    private boolean isDistributedTraceIdSame(String other) {
+        if (this.distributedTraceId == null && other == null) {
+            return true;
+        }
+        if (this.distributedTraceId != null && other != null) {
+            return this.distributedTraceId.equals(other);
+        }
+        return false;
     }
 }

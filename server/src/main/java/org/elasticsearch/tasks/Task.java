@@ -50,12 +50,22 @@ public class Task {
      */
     private final long startTimeNanos;
 
+    protected String distributedTraceId;
+
+    public void setDistributedTraceId(String distributedTraceId) {
+        this.distributedTraceId = distributedTraceId;
+    }
+
     public Task(long id, String type, String action, String description, TaskId parentTask, Map<String, String> headers) {
-        this(id, type, action, description, parentTask, System.currentTimeMillis(), System.nanoTime(), headers);
+        this(id, type, action, description, parentTask, System.currentTimeMillis(), System.nanoTime(), null, headers);
+    }
+
+    public Task(long id, String type, String action, String description, TaskId parentTask, String distributedTraceId, Map<String, String> headers) {
+        this(id, type, action, description, parentTask, System.currentTimeMillis(), System.nanoTime(), distributedTraceId, headers);
     }
 
     public Task(long id, String type, String action, String description, TaskId parentTask, long startTime, long startTimeNanos,
-                Map<String, String> headers) {
+        String distributedTraceId, Map<String, String> headers) {
         this.id = id;
         this.type = type;
         this.action = action;
@@ -64,6 +74,7 @@ public class Task {
         this.startTime = startTime;
         this.startTimeNanos = startTimeNanos;
         this.headers = headers;
+        this.distributedTraceId = distributedTraceId;
     }
 
     /**
@@ -83,15 +94,15 @@ public class Task {
             description = getDescription();
             status = getStatus();
         }
-        return taskInfo(localNodeId, description, status);
+        return taskInfo(localNodeId, description, status, distributedTraceId);
     }
 
     /**
      * Build a proper {@link TaskInfo} for this task.
      */
-    protected final TaskInfo taskInfo(String localNodeId, String description, Status status) {
+    protected final TaskInfo taskInfo(String localNodeId, String description, Status status, String distributedTraceId) {
         return new TaskInfo(new TaskId(localNodeId, getId()), getType(), getAction(), description, status, startTime,
-                System.nanoTime() - startTimeNanos, this instanceof CancellableTask, parentTask, headers);
+                System.nanoTime() - startTimeNanos, this instanceof CancellableTask, parentTask, distributedTraceId, headers);
     }
 
     /**

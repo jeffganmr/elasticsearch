@@ -25,6 +25,10 @@ public abstract class CancellableTask extends Task {
         super(id, type, action, description, parentTaskId, headers);
     }
 
+    public CancellableTask(long id, String type, String action, String description, TaskId parentTaskId, String distributedTraceId, Map<String, String> headers) {
+        super(id, type, action, description, parentTaskId, distributedTraceId, headers);
+    }
+
     /**
      * This method is called by the task manager when this task is cancelled.
      */

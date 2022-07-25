@@ -651,7 +651,9 @@ public class SearchRequest extends ActionRequest implements IndicesRequest.Repla
 
     @Override
     public SearchTask createTask(long id, String type, String action, TaskId parentTaskId, Map<String, String> headers) {
-        return new SearchTask(id, type, action, this::buildDescription, parentTaskId, headers);
+
+        String distributedTraceId = source == null ? null : source.getDistributedTraceId();
+        return new SearchTask(id, type, action, this::buildDescription, parentTaskId, distributedTraceId, headers);
     }
 
     public final String buildDescription() {

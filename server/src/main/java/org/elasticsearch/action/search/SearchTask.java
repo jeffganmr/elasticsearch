@@ -28,6 +28,13 @@ public class SearchTask extends CancellableTask {
         this.descriptionSupplier = descriptionSupplier;
     }
 
+    public SearchTask(long id, String type, String action, Supplier<String> descriptionSupplier,
+                      TaskId parentTaskId, String distributedTraceId, Map<String, String> headers) {
+        super(id, type, action, null, parentTaskId, headers);
+        this.descriptionSupplier = descriptionSupplier;
+        this.distributedTraceId = distributedTraceId;
+    }
+
     @Override
     public final String getDescription() {
         return descriptionSupplier.get();

@@ -65,7 +65,15 @@ public abstract class SearchContext implements Releasable {
     protected final List<Releasable> releasables = new CopyOnWriteArrayList<>();
     private final AtomicBoolean closed = new AtomicBoolean(false);
     private InnerHitsContext innerHitsContext;
+    private String distributedTraceId;
 
+    public String getDistributedTraceId() {
+        return distributedTraceId;
+    }
+
+    public void setDistributedTraceId(String distributedTraceId) {
+        this.distributedTraceId = distributedTraceId;
+    }
     protected SearchContext() {}
 
     public abstract void setTask(SearchShardTask task);

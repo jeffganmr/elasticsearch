@@ -61,6 +61,8 @@ public final class TaskInfo implements Writeable, ToXContentFragment {
 
     private final Map<String, String> headers;
 
+    private String distributedTraceId;
+
     public TaskInfo(TaskId taskId, String type, String action, String description, Task.Status status, long startTime,
                     long runningTimeNanos, boolean cancellable, TaskId parentTaskId, Map<String, String> headers) {
         this.taskId = taskId;
@@ -73,6 +75,22 @@ public final class TaskInfo implements Writeable, ToXContentFragment {
         this.cancellable = cancellable;
         this.parentTaskId = parentTaskId;
         this.headers = headers;
+        this.distributedTraceId = null;
+    }
+
+    public TaskInfo(TaskId taskId, String type, String action, String description, Task.Status status, long startTime,
+                    long runningTimeNanos, boolean cancellable, TaskId parentTaskId, String distributedTraceId, Map<String, String> headers) {
+        this.taskId = taskId;
+        this.type = type;
+        this.action = action;
+        this.description = description;
+        this.status = status;
+        this.startTime = startTime;
+        this.runningTimeNanos = runningTimeNanos;
+        this.cancellable = cancellable;
+        this.parentTaskId = parentTaskId;
+        this.headers = headers;
+        this.distributedTraceId = distributedTraceId;
     }
 
     /**
@@ -88,6 +106,7 @@ public final class TaskInfo implements Writeable, ToXContentFragment {
         runningTimeNanos = in.readLong();
         cancellable = in.readBoolean();
         parentTaskId = TaskId.readFromStream(in);
+        distributedTraceId = in.readOptionalString();
         if (in.getVersion().onOrAfter(Version.V_6_2_0)) {
             headers = in.readMap(StreamInput::readString, StreamInput::readString);
         } else {
@@ -106,6 +125,7 @@ public final class TaskInfo implements Writeable, ToXContentFragment {
         out.writeLong(runningTimeNanos);
         out.writeBoolean(cancellable);
         parentTaskId.writeTo(out);
+        out.writeOptionalString(distributedTraceId);
         if (out.getVersion().onOrAfter(Version.V_6_2_0)) {
             out.writeMap(headers, StreamOutput::writeString, StreamOutput::writeString);
         }
@@ -129,6 +149,10 @@ public final class TaskInfo implements Writeable, ToXContentFragment {
 
     public String getDescription() {
         return description;
+    }
+
+    public String getDistributedTraceId() {
+        return distributedTraceId;
     }
 
     /**
@@ -195,6 +219,7 @@ public final class TaskInfo implements Writeable, ToXContentFragment {
         if (parentTaskId.isSet()) {
             builder.field("parent_task_id", parentTaskId.toString());
         }
+        builder.field("distributed_trace_id", distributedTraceId);
         builder.startObject("headers");
         for(Map.Entry<String, String> attribute : headers.entrySet()) {
             builder.field(attribute.getKey(), attribute.getValue());
@@ -219,6 +244,7 @@ public final class TaskInfo implements Writeable, ToXContentFragment {
                 long runningTimeNanos = (Long) a[i++];
                 boolean cancellable = (Boolean) a[i++];
                 String parentTaskIdString = (String) a[i++];
+                String distributedTraceId = (String) a[i++];
                 @SuppressWarnings("unchecked") Map<String, String> headers = (Map<String, String>) a[i++];
                 if (headers == null) {
                     // This might happen if we are reading an old version of task info
@@ -227,7 +253,7 @@ public final class TaskInfo implements Writeable, ToXContentFragment {
                 RawTaskStatus status = statusBytes == null ? null : new RawTaskStatus(statusBytes);
                 TaskId parentTaskId = parentTaskIdString == null ? TaskId.EMPTY_TASK_ID : new TaskId(parentTaskIdString);
                 return new TaskInfo(id, type, action, description, status, startTime, runningTimeNanos, cancellable, parentTaskId,
-                    headers);
+                    distributedTraceId, headers);
             });
     static {
         // Note for the future: this has to be backwards and forwards compatible with all changes to the task storage format
@@ -242,6 +268,7 @@ public final class TaskInfo implements Writeable, ToXContentFragment {
         PARSER.declareLong(constructorArg(), new ParseField("running_time_in_nanos"));
         PARSER.declareBoolean(constructorArg(), new ParseField("cancellable"));
         PARSER.declareString(optionalConstructorArg(), new ParseField("parent_task_id"));
+        PARSER.declareString(optionalConstructorArg(), new ParseField("distributed_trace_id"));
         PARSER.declareObject(optionalConstructorArg(), (p, c) -> p.mapStrings(), new ParseField("headers"));
     }
 
@@ -266,11 +293,12 @@ public final class TaskInfo implements Writeable, ToXContentFragment {
                 && Objects.equals(parentTaskId, other.parentTaskId)
                 && Objects.equals(cancellable, other.cancellable)
                 && Objects.equals(status, other.status)
+                && Objects.equals(distributedTraceId, other.distributedTraceId)
                 && Objects.equals(headers, other.headers);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(taskId, type, action, description, startTime, runningTimeNanos, parentTaskId, cancellable, status, headers);
+        return Objects.hash(distributedTraceId, taskId, type, action, description, startTime, runningTimeNanos, parentTaskId, cancellable, status, headers);
     }
 }

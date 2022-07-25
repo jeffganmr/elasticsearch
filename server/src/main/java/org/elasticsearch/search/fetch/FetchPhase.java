@@ -72,94 +72,101 @@ public class FetchPhase {
     }
 
     public void execute(SearchContext context) {
-        if (LOGGER.isTraceEnabled()) {
-            LOGGER.trace("{}", new SearchContextSourcePrinter(context));
+        String currThreadName = Thread.currentThread().getName();
+        if (context.getDistributedTraceId() != null) {
+            Thread.currentThread().setName(currThreadName + "_traceid:" + context.getDistributedTraceId());
         }
+        try {
+            if (LOGGER.isTraceEnabled()) {
+                LOGGER.trace("{}", new SearchContextSourcePrinter(context));
+            }
 
-        if (context.isCancelled()) {
-            throw new TaskCancelledException("cancelled");
-        }
-
-        if (context.docIdsToLoadSize() == 0) {
-            // no individual hits to process, so we shortcut
-            context.fetchResult().hits(new SearchHits(new SearchHit[0], context.queryResult().getTotalHits(),
-                context.queryResult().getMaxScore()));
-            return;
-        }
-
-        DocIdToIndex[] docs = new DocIdToIndex[context.docIdsToLoadSize()];
-        for (int index = 0; index < context.docIdsToLoadSize(); index++) {
-            docs[index] = new DocIdToIndex(context.docIdsToLoad()[index], index);
-        }
-        // make sure that we iterate in doc id order
-        Arrays.sort(docs);
-
-        Map<String, Set<String>> storedToRequestedFields = new HashMap<>();
-        FieldsVisitor fieldsVisitor = createStoredFieldsVisitor(context, storedToRequestedFields);
-
-        FetchContext fetchContext = new FetchContext(context);
-
-        SearchHit[] hits = new SearchHit[context.docIdsToLoadSize()];
-
-        List<FetchSubPhaseProcessor> processors = getProcessors(context.shardTarget(), fetchContext);
-        NestedDocuments nestedDocuments = context.getNestedDocuments();
-
-        int currentReaderIndex = -1;
-        LeafReaderContext currentReaderContext = null;
-        LeafNestedDocuments leafNestedDocuments = null;
-        CheckedBiConsumer<Integer, FieldsVisitor, IOException> fieldReader = null;
-        boolean hasSequentialDocs = hasSequentialDocs(docs);
-        for (int index = 0; index < context.docIdsToLoadSize(); index++) {
             if (context.isCancelled()) {
                 throw new TaskCancelledException("cancelled");
             }
-            int docId = docs[index].docId;
-            try {
-                int readerIndex = ReaderUtil.subIndex(docId, context.searcher().getIndexReader().leaves());
-                if (currentReaderIndex != readerIndex) {
-                    currentReaderContext = context.searcher().getIndexReader().leaves().get(readerIndex);
-                    currentReaderIndex = readerIndex;
-                    if (currentReaderContext.reader() instanceof SequentialStoredFieldsLeafReader
-                            && hasSequentialDocs && docs.length >= 10) {
-                        // All the docs to fetch are adjacent but Lucene stored fields are optimized
-                        // for random access and don't optimize for sequential access - except for merging.
-                        // So we do a little hack here and pretend we're going to do merges in order to
-                        // get better sequential access.
-                        SequentialStoredFieldsLeafReader lf = (SequentialStoredFieldsLeafReader) currentReaderContext.reader();
-                        fieldReader = lf.getSequentialStoredFieldsReader()::visitDocument;
-                    } else {
-                        fieldReader = currentReaderContext.reader()::document;
-                    }
-                    for (FetchSubPhaseProcessor processor : processors) {
-                        processor.setNextReader(currentReaderContext);
-                    }
-                    leafNestedDocuments = nestedDocuments.getLeafNestedDocuments(currentReaderContext);
-                }
-                assert currentReaderContext != null;
-                HitContext hit = prepareHitContext(
-                    context,
-                    leafNestedDocuments,
-                    nestedDocuments::hasNonNestedParent,
-                    fieldsVisitor,
-                    docId,
-                    storedToRequestedFields,
-                    currentReaderContext,
-                    fieldReader);
-                for (FetchSubPhaseProcessor processor : processors) {
-                    processor.process(hit);
-                }
-                hits[docs[index].index] = hit.hit();
-            } catch (Exception e) {
-                throw new FetchPhaseExecutionException(context.shardTarget(), "Error running fetch phase for doc [" + docId + "]", e);
+
+            if (context.docIdsToLoadSize() == 0) {
+                // no individual hits to process, so we shortcut
+                context.fetchResult().hits(new SearchHits(new SearchHit[0], context.queryResult().getTotalHits(),
+                    context.queryResult().getMaxScore()));
+                return;
             }
-        }
-        if (context.isCancelled()) {
-            throw new TaskCancelledException("cancelled");
-        }
 
-        TotalHits totalHits = context.queryResult().getTotalHits();
-        context.fetchResult().hits(new SearchHits(hits, totalHits, context.queryResult().getMaxScore()));
+            DocIdToIndex[] docs = new DocIdToIndex[context.docIdsToLoadSize()];
+            for (int index = 0; index < context.docIdsToLoadSize(); index++) {
+                docs[index] = new DocIdToIndex(context.docIdsToLoad()[index], index);
+            }
+            // make sure that we iterate in doc id order
+            Arrays.sort(docs);
 
+            Map<String, Set<String>> storedToRequestedFields = new HashMap<>();
+            FieldsVisitor fieldsVisitor = createStoredFieldsVisitor(context, storedToRequestedFields);
+
+            FetchContext fetchContext = new FetchContext(context);
+
+            SearchHit[] hits = new SearchHit[context.docIdsToLoadSize()];
+
+            List<FetchSubPhaseProcessor> processors = getProcessors(context.shardTarget(), fetchContext);
+            NestedDocuments nestedDocuments = context.getNestedDocuments();
+
+            int currentReaderIndex = -1;
+            LeafReaderContext currentReaderContext = null;
+            LeafNestedDocuments leafNestedDocuments = null;
+            CheckedBiConsumer<Integer, FieldsVisitor, IOException> fieldReader = null;
+            boolean hasSequentialDocs = hasSequentialDocs(docs);
+            for (int index = 0; index < context.docIdsToLoadSize(); index++) {
+                if (context.isCancelled()) {
+                    throw new TaskCancelledException("cancelled");
+                }
+                int docId = docs[index].docId;
+                try {
+                    int readerIndex = ReaderUtil.subIndex(docId, context.searcher().getIndexReader().leaves());
+                    if (currentReaderIndex != readerIndex) {
+                        currentReaderContext = context.searcher().getIndexReader().leaves().get(readerIndex);
+                        currentReaderIndex = readerIndex;
+                        if (currentReaderContext.reader() instanceof SequentialStoredFieldsLeafReader
+                            && hasSequentialDocs && docs.length >= 10) {
+                            // All the docs to fetch are adjacent but Lucene stored fields are optimized
+                            // for random access and don't optimize for sequential access - except for merging.
+                            // So we do a little hack here and pretend we're going to do merges in order to
+                            // get better sequential access.
+                            SequentialStoredFieldsLeafReader lf = (SequentialStoredFieldsLeafReader) currentReaderContext.reader();
+                            fieldReader = lf.getSequentialStoredFieldsReader()::visitDocument;
+                        } else {
+                            fieldReader = currentReaderContext.reader()::document;
+                        }
+                        for (FetchSubPhaseProcessor processor : processors) {
+                            processor.setNextReader(currentReaderContext);
+                        }
+                        leafNestedDocuments = nestedDocuments.getLeafNestedDocuments(currentReaderContext);
+                    }
+                    assert currentReaderContext != null;
+                    HitContext hit = prepareHitContext(
+                        context,
+                        leafNestedDocuments,
+                        nestedDocuments::hasNonNestedParent,
+                        fieldsVisitor,
+                        docId,
+                        storedToRequestedFields,
+                        currentReaderContext,
+                        fieldReader);
+                    for (FetchSubPhaseProcessor processor : processors) {
+                        processor.process(hit);
+                    }
+                    hits[docs[index].index] = hit.hit();
+                } catch (Exception e) {
+                    throw new FetchPhaseExecutionException(context.shardTarget(), "Error running fetch phase for doc [" + docId + "]", e);
+                }
+            }
+            if (context.isCancelled()) {
+                throw new TaskCancelledException("cancelled");
+            }
+
+            TotalHits totalHits = context.queryResult().getTotalHits();
+            context.fetchResult().hits(new SearchHits(hits, totalHits, context.queryResult().getMaxScore()));
+        } finally {
+            Thread.currentThread().setName(currThreadName);
+        }
     }
 
     List<FetchSubPhaseProcessor> getProcessors(SearchShardTarget target, FetchContext context) {

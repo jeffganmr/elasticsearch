@@ -25,6 +25,10 @@ public class SearchShardTask extends CancellableTask {
         super(id, type, action, description, parentTaskId, headers);
     }
 
+    public SearchShardTask(long id, String type, String action, String description, TaskId parentTaskId, String distributedTraceId, Map<String, String> headers) {
+        super(id, type, action, description, parentTaskId, distributedTraceId, headers);
+    }
+
     @Override
     public boolean shouldCancelChildrenOnCancellation() {
         return false;

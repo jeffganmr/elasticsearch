@@ -108,6 +108,8 @@ public class RestSearchAction extends BaseRestHandler {
         return channel -> {
             RestCancellableNodeClient cancelClient = new RestCancellableNodeClient(client, request.getHttpChannel());
             cancelClient.execute(SearchAction.INSTANCE, searchRequest, new RestStatusToXContentListener<>(channel));
+//            String distributedTraceId = request.header("distributed_trace_id");
+//            searchRequest.source().setDistributedTraceId("jeff");
         };
     }
 
