@@ -26,6 +26,7 @@ import org.elasticsearch.common.TriFunction;
 import org.elasticsearch.common.io.stream.NamedWriteableRegistry;
 import org.elasticsearch.common.logging.DeprecationLogger;
 import org.elasticsearch.common.lucene.search.Queries;
+import org.elasticsearch.common.metrics.CounterMapMetric;
 import org.elasticsearch.common.regex.Regex;
 import org.elasticsearch.common.util.BigArrays;
 import org.elasticsearch.common.xcontent.NamedXContentRegistry;
@@ -118,6 +119,9 @@ public class QueryShardContext extends QueryRewriteContext {
     private NestedScope nestedScope;
     private final ValuesSourceRegistry valuesSourceRegistry;
     private final Map<String, MappedFieldType> runtimeMappings;
+
+    public final CounterMapMetric<String> indexPrefixMapMetric = new CounterMapMetric<>();
+    public final CounterMapMetric<String> nonIndexPrefixMapMetric = new CounterMapMetric<>();
 
     /**
      * Build a {@linkplain QueryShardContext}.
@@ -229,6 +233,23 @@ public class QueryShardContext extends QueryRewriteContext {
         this.allowExpensiveQueries = allowExpensiveQueries;
         this.valuesSourceRegistry = valuesSourceRegistry;
         this.runtimeMappings = runtimeMappings;
+
+        if (indexPrefixMapMetric.size() == 0) {
+            indexPrefixMapMetric.put(getTextFields());
+        }
+        if (nonIndexPrefixMapMetric.size() == 0) {
+            nonIndexPrefixMapMetric.put(getTextFields());
+        }
+    }
+
+    private List<String> getTextFields() {
+        List<String> textFields = new ArrayList<>();
+        for (MappedFieldType fieldType: getFieldTypes()) {
+            if (fieldType instanceof TextFieldMapper.TextFieldType) {
+                textFields.add(fieldType.name());
+            }
+        }
+        return textFields;
     }
 
     private void reset() {

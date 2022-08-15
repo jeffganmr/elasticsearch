@@ -128,10 +128,10 @@ public class MultiMatchQuery extends MatchQuery {
             final MatchQueryBuilder builder;
             if (group.getValue().size() == 1) {
                 builder = new MatchQueryBuilder(group.getKey(), group.getValue().get(0).fieldType,
-                    enablePositionIncrements, autoGenerateSynonymsPhraseQuery);
+                    enablePositionIncrements, autoGenerateSynonymsPhraseQuery, context);
             } else {
                 builder = new BlendedQueryBuilder(group.getKey(), group.getValue(), tieBreaker,
-                    enablePositionIncrements, autoGenerateSynonymsPhraseQuery);
+                    enablePositionIncrements, autoGenerateSynonymsPhraseQuery, context);
             }
 
             /*
@@ -162,8 +162,9 @@ public class MultiMatchQuery extends MatchQuery {
         private final float tieBreaker;
 
         BlendedQueryBuilder(Analyzer analyzer, List<FieldAndBoost> blendedFields, float tieBreaker,
-                                boolean enablePositionIncrements, boolean autoGenerateSynonymsPhraseQuery) {
-            super(analyzer, blendedFields.get(0).fieldType, enablePositionIncrements, autoGenerateSynonymsPhraseQuery);
+                                boolean enablePositionIncrements, boolean autoGenerateSynonymsPhraseQuery,
+                            QueryShardContext context) {
+            super(analyzer, blendedFields.get(0).fieldType, enablePositionIncrements, autoGenerateSynonymsPhraseQuery, context);
             this.blendedFields = blendedFields;
             this.tieBreaker = tieBreaker;
         }
@@ -199,7 +200,7 @@ public class MultiMatchQuery extends MatchQuery {
         protected Query analyzePhrase(String field, TokenStream stream, int slop) throws IOException {
             List<Query> disjunctions = new ArrayList<>();
             for (FieldAndBoost fieldType : blendedFields) {
-                Query query = fieldType.fieldType.phraseQuery(stream, slop, enablePositionIncrements);
+                Query query = fieldType.fieldType.phraseQuery(stream, slop, enablePositionIncrements, context);
                 if (fieldType.boost != 1f) {
                     query = new BoostQuery(query, fieldType.boost);
                 }
@@ -212,7 +213,7 @@ public class MultiMatchQuery extends MatchQuery {
         protected Query analyzeMultiPhrase(String field, TokenStream stream, int slop) throws IOException {
             List<Query> disjunctions = new ArrayList<>();
             for (FieldAndBoost fieldType : blendedFields) {
-                Query query = fieldType.fieldType.multiPhraseQuery(stream, slop, enablePositionIncrements);
+                Query query = fieldType.fieldType.multiPhraseQuery(stream, slop, enablePositionIncrements, context);
                 if (fieldType.boost != 1f) {
                     query = new BoostQuery(query, fieldType.boost);
                 }

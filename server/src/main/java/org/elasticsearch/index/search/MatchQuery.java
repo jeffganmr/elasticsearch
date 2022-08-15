@@ -261,7 +261,7 @@ public class MatchQuery {
         Analyzer analyzer = getAnalyzer(fieldType, type == Type.PHRASE || type == Type.PHRASE_PREFIX);
         assert analyzer != null;
 
-        MatchQueryBuilder builder = new MatchQueryBuilder(analyzer, fieldType, enablePositionIncrements, autoGenerateSynonymsPhraseQuery);
+        MatchQueryBuilder builder = new MatchQueryBuilder(analyzer, fieldType, enablePositionIncrements, autoGenerateSynonymsPhraseQuery, context);
 
         /*
          * If a keyword analyzer is used, we know that further analysis isn't
@@ -361,12 +361,14 @@ public class MatchQuery {
 
     class MatchQueryBuilder extends QueryBuilder {
         private final MappedFieldType fieldType;
+        private final QueryShardContext context;
 
         /**
          * Creates a new QueryBuilder using the given analyzer.
          */
         MatchQueryBuilder(Analyzer analyzer, MappedFieldType fieldType,
-                            boolean enablePositionIncrements, boolean autoGenerateSynonymsPhraseQuery) {
+                            boolean enablePositionIncrements, boolean autoGenerateSynonymsPhraseQuery,
+                          QueryShardContext context) {
             super(analyzer);
             this.fieldType = fieldType;
             setEnablePositionIncrements(enablePositionIncrements);
@@ -375,6 +377,7 @@ public class MatchQuery {
             } else {
                 setAutoGenerateMultiTermSynonymsPhraseQuery(false);
             }
+            this.context = context;
         }
 
         @Override
@@ -663,7 +666,7 @@ public class MatchQuery {
         protected Query analyzePhrase(String field, TokenStream stream, int slop) throws IOException {
             try {
                 checkForPositions(field);
-                return fieldType.phraseQuery(stream, slop, enablePositionIncrements);
+                return fieldType.phraseQuery(stream, slop, enablePositionIncrements, context);
             } catch (IllegalArgumentException | IllegalStateException e) {
                 if (lenient) {
                     return newLenientFieldQuery(field, e);
@@ -676,7 +679,7 @@ public class MatchQuery {
         protected Query analyzeMultiPhrase(String field, TokenStream stream, int slop) throws IOException {
             try {
                 checkForPositions(field);
-                return fieldType.multiPhraseQuery(stream, slop, enablePositionIncrements);
+                return fieldType.multiPhraseQuery(stream, slop, enablePositionIncrements, context);
             } catch (IllegalArgumentException | IllegalStateException e) {
                 if (lenient) {
                     return newLenientFieldQuery(field, e);
@@ -690,7 +693,7 @@ public class MatchQuery {
                 if (positionCount > 1) {
                     checkForPositions(field);
                 }
-                return fieldType.phrasePrefixQuery(stream, slop, maxExpansions);
+                return fieldType.phrasePrefixQuery(stream, slop, maxExpansions, context);
             } catch (IllegalArgumentException | IllegalStateException e) {
                 if (lenient) {
                     return newLenientFieldQuery(field, e);

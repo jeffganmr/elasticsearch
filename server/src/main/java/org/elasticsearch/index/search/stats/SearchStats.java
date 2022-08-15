@@ -43,15 +43,27 @@ public class SearchStats implements Writeable, ToXContentFragment {
         private long suggestTimeInMillis;
         private long suggestCurrent;
 
+        private long indexPrefixCount;
+        private long nonIndexPrefixCount;
+
+        private Map<String, Long> indexPrefixMap;
+        private Map<String, Long> nonIndexPrefixMap;
+        private Map<String, Float> indexPrefixPercentageMap;
+
         private Stats() {
             // for internal use, initializes all counts to 0
+            indexPrefixMap = new HashMap<>();
+            nonIndexPrefixMap = new HashMap<>();
+            indexPrefixPercentageMap = new HashMap<>();
         }
 
         public Stats(
                 long queryCount, long queryTimeInMillis, long queryCurrent,
                 long fetchCount, long fetchTimeInMillis, long fetchCurrent,
                 long scrollCount, long scrollTimeInMillis, long scrollCurrent,
-                long suggestCount, long suggestTimeInMillis, long suggestCurrent
+                long suggestCount, long suggestTimeInMillis, long suggestCurrent,
+                long indexPrefixCount, long nonIndexPrefixCount, Map<String, Long> indexPrefixMap,
+                Map<String, Long> nonIndexPrefixMap
         ) {
             this.queryCount = queryCount;
             this.queryTimeInMillis = queryTimeInMillis;
@@ -68,6 +80,16 @@ public class SearchStats implements Writeable, ToXContentFragment {
             this.suggestCount = suggestCount;
             this.suggestTimeInMillis = suggestTimeInMillis;
             this.suggestCurrent = suggestCurrent;
+
+            this.indexPrefixCount = indexPrefixCount;
+            this.nonIndexPrefixCount = nonIndexPrefixCount;
+
+            this.indexPrefixMap = indexPrefixMap;
+            this.nonIndexPrefixMap = nonIndexPrefixMap;
+            if (this.indexPrefixPercentageMap == null) {
+                this.indexPrefixPercentageMap = new HashMap<>();
+            }
+            updateIndexPrefixPercentageMap();
         }
 
         private Stats(StreamInput in) throws IOException {
@@ -86,6 +108,13 @@ public class SearchStats implements Writeable, ToXContentFragment {
             suggestCount = in.readVLong();
             suggestTimeInMillis = in.readVLong();
             suggestCurrent = in.readVLong();
+
+            indexPrefixCount = in.readVLong();
+            nonIndexPrefixCount = in.readVLong();
+
+            indexPrefixMap = in.readMap(StreamInput::readString, StreamInput::readVLong);
+            nonIndexPrefixMap = in.readMap(StreamInput::readString, StreamInput::readVLong);
+            indexPrefixPercentageMap = in.readMap(StreamInput::readString, StreamInput::readFloat);
         }
 
         public void add(Stats stats) {
@@ -104,6 +133,12 @@ public class SearchStats implements Writeable, ToXContentFragment {
             suggestCount += stats.suggestCount;
             suggestTimeInMillis += stats.suggestTimeInMillis;
             suggestCurrent += stats.suggestCurrent;
+
+            indexPrefixCount += stats.indexPrefixCount;
+            nonIndexPrefixCount += stats.nonIndexPrefixCount;
+
+            addIndexPrefixMaps(stats);
+            updateIndexPrefixPercentageMap();
         }
 
         public void addForClosingShard(Stats stats) {
@@ -120,6 +155,37 @@ public class SearchStats implements Writeable, ToXContentFragment {
 
             suggestCount += stats.suggestCount;
             suggestTimeInMillis += stats.suggestTimeInMillis;
+
+            indexPrefixCount += stats.indexPrefixCount;
+            nonIndexPrefixCount += stats.nonIndexPrefixCount;
+
+            addIndexPrefixMaps(stats);
+            updateIndexPrefixPercentageMap();
+        }
+
+        // Utility function to add indexPrefixMap, nonIndexPrefixMap
+        private void addIndexPrefixMaps(Stats stats) {
+            for (String field: stats.indexPrefixMap.keySet()) {
+                indexPrefixMap.put(field, indexPrefixMap.getOrDefault(field, 0L) + stats.indexPrefixMap.get(field));
+            }
+            for (String field: stats.nonIndexPrefixMap.keySet()) {
+                nonIndexPrefixMap.put(field, nonIndexPrefixMap.getOrDefault(field, 0L) + stats.nonIndexPrefixMap.get(field));
+            }
+        }
+
+        // Utility function to update percentage of index prefixes
+        private void updateIndexPrefixPercentageMap() {
+            for (String field: indexPrefixMap.keySet()) {
+                long fieldIndexPrefixCount = indexPrefixMap.get(field);
+                long fieldNonIndexPrefixCount = nonIndexPrefixMap.getOrDefault(field, 0L);
+                long total = fieldIndexPrefixCount + fieldNonIndexPrefixCount;
+                if (total == 0) {
+                    indexPrefixPercentageMap.put(field, 0f);
+                }
+                else {
+                    indexPrefixPercentageMap.put(field, fieldIndexPrefixCount*100f/total);
+                }
+            }
         }
 
         public long getQueryCount() {
@@ -186,6 +252,27 @@ public class SearchStats implements Writeable, ToXContentFragment {
             return suggestCurrent;
         }
 
+
+        public long getIndexPrefixCount() {
+            return indexPrefixCount;
+        }
+
+        public long getNonIndexPrefixCount() {
+            return  nonIndexPrefixCount;
+        }
+
+        public Map<String, Long> getIndexPrefixMap() {
+            return  indexPrefixMap;
+        }
+
+        public Map<String, Long> getNonIndexPrefixMap() {
+            return nonIndexPrefixMap;
+        }
+
+        public Map<String, Float> getIndexPrefixPercentageMap() {
+            return indexPrefixPercentageMap;
+        }
+
         public static Stats readStats(StreamInput in) throws IOException {
             return new Stats(in);
         }
@@ -207,6 +294,13 @@ public class SearchStats implements Writeable, ToXContentFragment {
             out.writeVLong(suggestCount);
             out.writeVLong(suggestTimeInMillis);
             out.writeVLong(suggestCurrent);
+
+            out.writeVLong(indexPrefixCount);
+            out.writeVLong(nonIndexPrefixCount);
+
+            out.writeMap(indexPrefixMap, StreamOutput::writeString, StreamOutput::writeVLong);
+            out.writeMap(nonIndexPrefixMap, StreamOutput::writeString, StreamOutput::writeVLong);
+            out.writeMap(indexPrefixPercentageMap, StreamOutput::writeString, StreamOutput::writeFloat);
         }
 
         @Override
@@ -226,6 +320,13 @@ public class SearchStats implements Writeable, ToXContentFragment {
             builder.field(Fields.SUGGEST_TOTAL, suggestCount);
             builder.humanReadableField(Fields.SUGGEST_TIME_IN_MILLIS, Fields.SUGGEST_TIME, getSuggestTime());
             builder.field(Fields.SUGGEST_CURRENT, suggestCurrent);
+
+            builder.field(Fields.INDEX_PREFIX_TOTAL, indexPrefixCount);
+            builder.field(Fields.NON_INDEX_PREFIX_TOTAL, nonIndexPrefixCount);
+
+            builder.field(Fields.INDEX_PREFIX_COUNT, indexPrefixMap);
+            builder.field(Fields.NON_INDEX_PREFIX_COUNT, nonIndexPrefixMap);
+            builder.field(Fields.INDEX_PREFIX_PERCENTAGE, indexPrefixPercentageMap);
 
             return builder;
         }
@@ -342,6 +443,11 @@ public class SearchStats implements Writeable, ToXContentFragment {
         static final String SUGGEST_TIME = "suggest_time";
         static final String SUGGEST_TIME_IN_MILLIS = "suggest_time_in_millis";
         static final String SUGGEST_CURRENT = "suggest_current";
+        static final String INDEX_PREFIX_TOTAL = "index_prefix_total";
+        static final String NON_INDEX_PREFIX_TOTAL = "non_index_prefix_total";
+        static final String INDEX_PREFIX_COUNT = "index_prefix_count";
+        static final String NON_INDEX_PREFIX_COUNT = "non_index_prefix_count";
+        static final String INDEX_PREFIX_PERCENTAGE = "index_prefix_percentage";
     }
 
     @Override

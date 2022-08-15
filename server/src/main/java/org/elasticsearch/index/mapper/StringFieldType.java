@@ -54,7 +54,7 @@ public abstract class StringFieldType extends TermBasedFieldType {
                     ALLOW_EXPENSIVE_QUERIES.getKey() + "' is set to false.");
         }
         failIfNotIndexed();
-        return new FuzzyQuery(new Term(name(), indexedValueForSearch(value)),
+        return new FuzzyQuery(createNewTerm(name(), indexedValueForSearch(value), context, name()),
                 fuzziness.asDistance(BytesRefs.toString(value)), prefixLength, maxExpansions, transpositions);
     }
 
@@ -67,14 +67,14 @@ public abstract class StringFieldType extends TermBasedFieldType {
         }
         failIfNotIndexed();
         if (caseInsensitive) {
-            AutomatonQuery query = AutomatonQueries.caseInsensitivePrefixQuery((new Term(name(), indexedValueForSearch(value))));
+            AutomatonQuery query = AutomatonQueries.caseInsensitivePrefixQuery((createNewTerm(name(), indexedValueForSearch(value), context, name())));
             if (method != null) {
                 query.setRewriteMethod(method);
             }
             return query;
 
         }
-        PrefixQuery query = new PrefixQuery(new Term(name(), indexedValueForSearch(value)));
+        PrefixQuery query = new PrefixQuery(createNewTerm(name(), indexedValueForSearch(value), context, name()));
         if (method != null) {
             query.setRewriteMethod(method);
         }
@@ -122,9 +122,9 @@ public abstract class StringFieldType extends TermBasedFieldType {
         Term term;
         if (getTextSearchInfo().getSearchAnalyzer() != null) {
             value = normalizeWildcardPattern(name(), value, getTextSearchInfo().getSearchAnalyzer());
-            term = new Term(name(), value);
+            term = createNewTerm(name(), value, context, name());
         } else {
-            term = new Term(name(), indexedValueForSearch(value));
+            term = createNewTerm(name(), indexedValueForSearch(value), context, name());
         }
         if (caseInsensitive) {
             AutomatonQuery query = AutomatonQueries.caseInsensitiveWildcardQuery(term);
@@ -144,7 +144,7 @@ public abstract class StringFieldType extends TermBasedFieldType {
                     ALLOW_EXPENSIVE_QUERIES.getKey() + "' is set to false.");
         }
         failIfNotIndexed();
-        RegexpQuery query = new RegexpQuery(new Term(name(), indexedValueForSearch(value)), syntaxFlags,
+        RegexpQuery query = new RegexpQuery(createNewTerm(name(), indexedValueForSearch(value), context, name()), syntaxFlags,
             matchFlags, maxDeterminizedStates);
         if (method != null) {
             query.setRewriteMethod(method);

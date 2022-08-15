@@ -40,17 +40,27 @@ public abstract class TermBasedFieldType extends SimpleMappedFieldType {
     @Override
     public Query termQueryCaseInsensitive(Object value, QueryShardContext context) {
         failIfNotIndexed();
-        Query query = AutomatonQueries.caseInsensitiveTermQuery(new Term(name(), indexedValueForSearch(value)));
+        Query query = AutomatonQueries.caseInsensitiveTermQuery(createNewTerm(name(), indexedValueForSearch(value), context, name()));
         if (boost() != 1f) {
             query = new BoostQuery(query, boost());
         }
         return query;
     }
 
+    public static Term createNewTerm(String field, BytesRef value, QueryShardContext context, String fieldWithSuffix) {
+        context.nonIndexPrefixMapMetric.inc(field);
+        return new Term(fieldWithSuffix, value);
+    }
+
+    public static Term createNewTerm(String field, String value, QueryShardContext context, String fieldWithSuffix) {
+        context.nonIndexPrefixMapMetric.inc(field);
+        return new Term(fieldWithSuffix, value);
+    }
+
     @Override
     public Query termQuery(Object value, QueryShardContext context) {
         failIfNotIndexed();
-        Query query = new TermQuery(new Term(name(), indexedValueForSearch(value)));
+        Query query = new TermQuery(createNewTerm(name(), indexedValueForSearch(value), context, name()));
         if (boost() != 1f) {
             query = new BoostQuery(query, boost());
         }

@@ -8,19 +8,25 @@
 
 package org.elasticsearch.index.search.stats;
 
+
 import org.elasticsearch.common.collect.MapBuilder;
 import org.elasticsearch.common.metrics.CounterMetric;
 import org.elasticsearch.common.metrics.MeanMetric;
+import org.elasticsearch.common.metrics.CounterMapMetric;
+import org.elasticsearch.common.recycler.Recycler;
 import org.elasticsearch.common.regex.Regex;
 import org.elasticsearch.common.util.CollectionUtils;
+import org.elasticsearch.index.mapper.MappedFieldType;
+import org.elasticsearch.index.mapper.TextFieldMapper;
 import org.elasticsearch.index.shard.SearchOperationListener;
 import org.elasticsearch.search.internal.ReaderContext;
 import org.elasticsearch.search.internal.SearchContext;
 
-import java.util.HashMap;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import static java.util.Collections.emptyMap;
 
@@ -89,6 +95,14 @@ public final class ShardSearchStats implements SearchOperationListener {
             } else {
                 statsHolder.queryMetric.inc(tookInNanos);
                 statsHolder.queryCurrent.dec();
+                // if fields with type text are not in the maps, then, insert all of them
+                if (statsHolder.indexPrefixMapMetric.size() == 0) {
+                    statsHolder.indexPrefixMapMetric.put(getTextFields(searchContext));
+                }
+                if (statsHolder.nonIndexPrefixMapMetric.size() == 0) {
+                    statsHolder.nonIndexPrefixMapMetric.put(getTextFields(searchContext));
+                }
+                updateIndexPrefixMetrics(searchContext, statsHolder);
                 assert statsHolder.queryCurrent.count() >= 0;
             }
         });
@@ -136,6 +150,21 @@ public final class ShardSearchStats implements SearchOperationListener {
         return stats;
     }
 
+    private List<String> getTextFields(SearchContext searchContext) {
+        List<String> textFields = new ArrayList<>();
+        for (MappedFieldType fieldType: searchContext.getQueryShardContext().getFieldTypes()) {
+            if (fieldType instanceof TextFieldMapper.TextFieldType) {
+                textFields.add(fieldType.name());
+            }
+        }
+        return textFields;
+    }
+
+    private void updateIndexPrefixMetrics(SearchContext searchContext, StatsHolder statsHolder) {
+        statsHolder.indexPrefixMapMetric.inc(searchContext.getQueryShardContext().indexPrefixMapMetric);
+        statsHolder.nonIndexPrefixMapMetric.inc(searchContext.getQueryShardContext().nonIndexPrefixMapMetric);
+    }
+
     @Override
     public void onNewReaderContext(ReaderContext readerContext) {
         openContexts.inc();
@@ -174,13 +203,19 @@ public final class ShardSearchStats implements SearchOperationListener {
         final CounterMetric fetchCurrent = new CounterMetric();
         final CounterMetric scrollCurrent = new CounterMetric();
         final CounterMetric suggestCurrent = new CounterMetric();
+        final CounterMetric indexPrefixMetric = new CounterMetric();
+        final CounterMetric nonIndexPrefixMetric = new CounterMetric();
+        final CounterMapMetric<String> indexPrefixMapMetric = new CounterMapMetric<>();
+        final CounterMapMetric<String> nonIndexPrefixMapMetric = new CounterMapMetric<>();
+
 
         SearchStats.Stats stats() {
             return new SearchStats.Stats(
                     queryMetric.count(), TimeUnit.NANOSECONDS.toMillis(queryMetric.sum()), queryCurrent.count(),
                     fetchMetric.count(), TimeUnit.NANOSECONDS.toMillis(fetchMetric.sum()), fetchCurrent.count(),
                     scrollMetric.count(), TimeUnit.MICROSECONDS.toMillis(scrollMetric.sum()), scrollCurrent.count(),
-                    suggestMetric.count(), TimeUnit.NANOSECONDS.toMillis(suggestMetric.sum()), suggestCurrent.count()
+                    suggestMetric.count(), TimeUnit.NANOSECONDS.toMillis(suggestMetric.sum()), suggestCurrent.count(),
+                    indexPrefixMetric.count(), nonIndexPrefixMetric.count(), indexPrefixMapMetric.count(), nonIndexPrefixMapMetric.count()
             );
         }
     }

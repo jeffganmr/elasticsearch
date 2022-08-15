@@ -35,6 +35,7 @@ import org.apache.lucene.search.PrefixQuery;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.SynonymQuery;
 import org.apache.lucene.search.TermQuery;
+import org.apache.lucene.search.BoostQuery;
 import org.apache.lucene.search.spans.FieldMaskingSpanQuery;
 import org.apache.lucene.search.spans.SpanMultiTermQueryWrapper;
 import org.apache.lucene.search.spans.SpanNearQuery;
@@ -487,6 +488,39 @@ public class TextFieldMapper extends FieldMapper {
             this.parentField = parentField;
         }
 
+
+        public static Term createNewTerm(String field, String value, QueryShardContext context, String fieldWithSuffix) {
+            context.indexPrefixMapMetric.inc(field);
+            return new Term(fieldWithSuffix, value);
+        }
+
+
+        public static Term createNewTerm(String field, BytesRef value, QueryShardContext context, String fieldWithSuffix) {
+            context.indexPrefixMapMetric.inc(field);
+            return new Term(fieldWithSuffix, value);
+        }
+
+        @Override
+        public Query termQueryCaseInsensitive(Object value, QueryShardContext context) {
+            failIfNotIndexed();
+            Query query = AutomatonQueries.caseInsensitiveTermQuery(
+                createNewTerm(parentField.name(), indexedValueForSearch(value), context, name()));
+            if (boost() != 1f) {
+                query = new BoostQuery(query, boost());
+            }
+            return query;
+        }
+
+        @Override
+        public Query termQuery(Object value, QueryShardContext context) {
+            failIfNotIndexed();
+            Query query = new TermQuery(createNewTerm(parentField.name(), indexedValueForSearch(value), context, name()));
+            if (boost() != 1f) {
+                query = new BoostQuery(query, boost());
+            }
+            return query;
+        }
+
         @Override
         public ValueFetcher valueFetcher(QueryShardContext context, String format) {
             throw new UnsupportedOperationException();
@@ -500,9 +534,9 @@ public class TextFieldMapper extends FieldMapper {
         public Query prefixQuery(String value, MultiTermQuery.RewriteMethod method, boolean caseInsensitive, QueryShardContext context) {
             if (value.length() >= minChars) {
                 if (caseInsensitive) {
-                    return super.termQueryCaseInsensitive(value, context);
+                    return termQueryCaseInsensitive(value, context);
                 }
-                return super.termQuery(value, context);
+                return termQuery(value, context);
             }
             List<Automaton> automata = new ArrayList<>();
             if (caseInsensitive) {
@@ -515,11 +549,11 @@ public class TextFieldMapper extends FieldMapper {
                 automata.add(Automata.makeAnyChar());
             }
             Automaton automaton = Operations.concatenate(automata);
-            AutomatonQuery query = new AutomatonQuery(new Term(name(), value + "*"), automaton);
+            AutomatonQuery query = new AutomatonQuery(createNewTerm(parentField.name(), value + "*", context, name()), automaton);
             query.setRewriteMethod(method);
             return new BooleanQuery.Builder()
                 .add(query, BooleanClause.Occur.SHOULD)
-                .add(new TermQuery(new Term(parentField.name(), value)), BooleanClause.Occur.SHOULD)
+                .add(new TermQuery(TermBasedFieldType.createNewTerm(parentField.name(), value, context, parentField.name())), BooleanClause.Occur.SHOULD)
                 .build();
         }
 
@@ -663,10 +697,10 @@ public class TextFieldMapper extends FieldMapper {
                     && value.length() <= prefixFieldType.maxChars
                     && prefixFieldType.getTextSearchInfo().hasPositions()) {
 
-                return new FieldMaskingSpanQuery(new SpanTermQuery(new Term(prefixFieldType.name(), indexedValueForSearch(value))), name());
+                return new FieldMaskingSpanQuery(new SpanTermQuery(PrefixFieldType.createNewTerm(name(), indexedValueForSearch(value), context, prefixFieldType.name())), name());
             } else {
                 SpanMultiTermQueryWrapper<?> spanMulti =
-                    new SpanMultiTermQueryWrapper<>(new PrefixQuery(new Term(name(), indexedValueForSearch(value))));
+                    new SpanMultiTermQueryWrapper<>(new PrefixQuery(createNewTerm(name(), indexedValueForSearch(value), context, name())));
                 spanMulti.setRewriteMethod(method);
                 return spanMulti;
             }
@@ -693,7 +727,7 @@ public class TextFieldMapper extends FieldMapper {
         }
 
         @Override
-        public Query phraseQuery(TokenStream stream, int slop, boolean enablePosIncrements) throws IOException {
+        public Query phraseQuery(TokenStream stream, int slop, boolean enablePosIncrements, QueryShardContext context) throws IOException {
             String field = name();
             // we can't use the index_phrases shortcut with slop, if there are gaps in the stream,
             // or if the incoming token stream is the output of a token graph due to
@@ -720,31 +754,31 @@ public class TextFieldMapper extends FieldMapper {
                 else {
                     position += 1;
                 }
-                builder.add(new Term(field, termAtt.getBytesRef()), position);
+                builder.add(createNewTerm(name(), termAtt.getBytesRef(), context, field), position);
             }
 
             return builder.build();
         }
 
         @Override
-        public Query multiPhraseQuery(TokenStream stream, int slop, boolean enablePositionIncrements) throws IOException {
+        public Query multiPhraseQuery(TokenStream stream, int slop, boolean enablePositionIncrements, QueryShardContext context) throws IOException {
             String field = name();
             if (indexPhrases && slop == 0 && hasGaps(stream) == false) {
                 stream = new FixedShingleFilter(stream, 2);
                 field = field + FAST_PHRASE_SUFFIX;
             }
-            return createPhraseQuery(stream, field, slop, enablePositionIncrements);
+            return createPhraseQuery(stream, field, slop, enablePositionIncrements, context, name());
         }
 
         @Override
-        public Query phrasePrefixQuery(TokenStream stream, int slop, int maxExpansions) throws IOException {
-            return analyzePhrasePrefix(stream, slop, maxExpansions);
+        public Query phrasePrefixQuery(TokenStream stream, int slop, int maxExpansions, QueryShardContext context) throws IOException {
+            return analyzePhrasePrefix(stream, slop, maxExpansions, context);
         }
 
-        private Query analyzePhrasePrefix(TokenStream stream, int slop, int maxExpansions) throws IOException {
+        private Query analyzePhrasePrefix(TokenStream stream, int slop, int maxExpansions, QueryShardContext context) throws IOException {
             String prefixField = prefixFieldType == null || slop > 0 ? null : prefixFieldType.name();
             IntPredicate usePrefix = (len) -> len >= prefixFieldType.minChars && len <= prefixFieldType.maxChars;
-            return createPhrasePrefixQuery(stream, name(), slop, maxExpansions, prefixField, usePrefix);
+            return createPhrasePrefixQuery(stream, name(), slop, maxExpansions, prefixField, usePrefix, context);
         }
 
         public static boolean hasGaps(TokenStream stream) throws IOException {
@@ -844,7 +878,9 @@ public class TextFieldMapper extends FieldMapper {
         return (TextFieldType) super.fieldType();
     }
 
-    public static Query createPhraseQuery(TokenStream stream, String field, int slop, boolean enablePositionIncrements) throws IOException {
+    public static Query createPhraseQuery(TokenStream stream, String field, int slop,
+                                          boolean enablePositionIncrements, QueryShardContext context,
+                                          String fieldWithoutSuffix) throws IOException {
         MultiPhraseQuery.Builder mpqb = new MultiPhraseQuery.Builder();
         mpqb.setSlop(slop);
 
@@ -867,7 +903,7 @@ public class TextFieldMapper extends FieldMapper {
                 multiTerms.clear();
             }
             position += positionIncrement;
-            multiTerms.add(new Term(field, termAtt.getBytesRef()));
+            multiTerms.add(TermBasedFieldType.createNewTerm(fieldWithoutSuffix, termAtt.getBytesRef(), context, field));
         }
 
         if (enablePositionIncrements) {
@@ -879,7 +915,8 @@ public class TextFieldMapper extends FieldMapper {
     }
 
     public static Query createPhrasePrefixQuery(TokenStream stream, String field, int slop, int maxExpansions,
-                                                String prefixField, IntPredicate usePrefixField) throws IOException {
+                                                String prefixField, IntPredicate usePrefixField,
+                                                QueryShardContext context) throws IOException {
         MultiPhrasePrefixQuery builder = new MultiPhrasePrefixQuery(field);
         builder.setSlop(slop);
         builder.setMaxExpansions(maxExpansions);
@@ -899,7 +936,7 @@ public class TextFieldMapper extends FieldMapper {
                 position += posIncrAtt.getPositionIncrement();
                 currentTerms.clear();
             }
-            currentTerms.add(new Term(field, termAtt.getBytesRef()));
+            currentTerms.add(TermBasedFieldType.createNewTerm(field, termAtt.getBytesRef(), context, field));
         }
         builder.add(currentTerms.toArray(new Term[0]), position);
         if (prefixField == null) {
@@ -919,7 +956,7 @@ public class TextFieldMapper extends FieldMapper {
         if (terms.length == 1) {
             SynonymQuery.Builder sb = new SynonymQuery.Builder(prefixField);
             Arrays.stream(terms[0])
-                .map(term -> new Term(prefixField, term.bytes()))
+                .map(term -> PrefixFieldType.createNewTerm(field, termAtt.getBytesRef(), context, prefixField))
                 .forEach(sb::addTerm);
             return sb.build();
         }
@@ -937,12 +974,14 @@ public class TextFieldMapper extends FieldMapper {
             if (i == lastPos) {
                 if (posTerms.length == 1) {
                     FieldMaskingSpanQuery fieldMask =
-                        new FieldMaskingSpanQuery(new SpanTermQuery(new Term(prefixField, posTerms[0].bytes())), field);
+                        new FieldMaskingSpanQuery(new SpanTermQuery(
+                            PrefixFieldType.createNewTerm(field, posTerms[0].bytes(), context, prefixField)), field);
                     spanQuery.addClause(fieldMask);
                 } else {
                     SpanQuery[] queries = Arrays.stream(posTerms)
                         .map(term -> new FieldMaskingSpanQuery(
-                            new SpanTermQuery(new Term(prefixField, term.bytes())), field)
+                            new SpanTermQuery(
+                                PrefixFieldType.createNewTerm(field, posTerms[0].bytes(), context, prefixField)), field)
                         )
                         .toArray(SpanQuery[]::new);
                     spanQuery.addClause(new SpanOrQuery(queries));
